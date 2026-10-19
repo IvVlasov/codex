@@ -11,7 +11,7 @@ use codex_http_client::HttpClient;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
 pub use codex_http_client::RequestBuilder as CodexRequestBuilder;
-use codex_http_client::build_reqwest_client_with_custom_ca;
+use codex_http_client::build_reqwest_client_with_cached_ca;
 use codex_http_client::with_chatgpt_cloudflare_cookie_store;
 use codex_terminal_detection::user_agent;
 use reqwest::header::HeaderMap;
@@ -235,7 +235,7 @@ pub fn build_reqwest_client() -> reqwest::Client {
 /// Callers that need a structured CA-loading failure instead of the legacy logged fallback can use
 /// this method directly.
 pub fn try_build_reqwest_client() -> Result<reqwest::Client, BuildCustomCaTransportError> {
-    build_reqwest_client_with_custom_ca(default_reqwest_client_builder())
+    build_reqwest_client_with_cached_ca(default_reqwest_client_builder())
 }
 
 /// Builds the default Codex reqwest client for a concrete outbound route.
@@ -260,7 +260,7 @@ pub fn build_default_reqwest_client_for_route(
         return Ok(build_reqwest_client());
     }
 
-    http_client_factory.build_reqwest_client(
+    http_client_factory.build_reqwest_client_with_cached_ca(
         default_reqwest_client_builder(),
         request_url,
         route_class,

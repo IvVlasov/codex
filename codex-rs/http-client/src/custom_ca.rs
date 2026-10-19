@@ -63,6 +63,9 @@ pub const SSL_CERT_FILE_ENV: &str = "SSL_CERT_FILE";
 const CA_CERT_HINT: &str = "If you set CODEX_CA_CERTIFICATE or SSL_CERT_FILE, ensure it points to a PEM file containing one or more CERTIFICATE blocks, or unset it to use system roots.";
 type PemSection = (SectionKind, Vec<u8>);
 
+#[path = "cached_tls.rs"]
+mod cached_tls;
+
 /// Describes why a transport using shared custom CA support could not be constructed.
 ///
 /// These failure modes apply to both reqwest client construction and websocket TLS
@@ -182,6 +185,22 @@ pub fn build_reqwest_client_with_custom_ca(
     build_reqwest_client_with_env(&ProcessEnv, builder)
 }
 
+/// Builds an HTTP client using process-cached system roots and the configured custom CA bundle.
+///
+/// Only use this for builders with the default TLS policy: the cached rustls configuration
+/// replaces builder TLS options, including protocol limits, identities, and extra roots.
+/// Proxy routing, headers, cookies, redirects, and timeouts remain configured by the builder.
+/// Callers that customize TLS must use [`build_reqwest_client_with_custom_ca`] instead.
+///
+/// CA files and CA environment variables are read on the first successful initialization.
+/// Restart the process after changing the trust store. Initialization failures are returned,
+/// without caching an error or falling back to a different trust store.
+pub fn build_reqwest_client_with_cached_ca(
+    builder: reqwest::ClientBuilder,
+) -> Result<reqwest::Client, BuildCustomCaTransportError> {
+    cached_tls::build_reqwest_client(builder)
+}
+
 /// Builds a rustls client config when a Codex custom CA bundle is configured.
 ///
 /// This is the websocket-facing sibling of [`build_reqwest_client_with_custom_ca`]. When
@@ -195,7 +214,10 @@ pub fn build_reqwest_client_with_custom_ca(
 /// enterprise root CA bundle as HTTPS traffic.
 pub fn maybe_build_rustls_client_config_with_custom_ca()
 -> Result<Option<Arc<ClientConfig>>, BuildCustomCaTransportError> {
-    maybe_build_rustls_client_config_with_env(&ProcessEnv)
+    if ProcessEnv.configured_ca_bundle().is_none() {
+        return Ok(None);
+    }
+    cached_tls::rustls_config().map(Some)
 }
 
 /// Builds a rustls client config using native roots and any configured Codex custom CA bundle.
@@ -205,7 +227,7 @@ pub fn maybe_build_rustls_client_config_with_custom_ca()
 /// transport library.
 pub fn build_rustls_client_config_with_custom_ca()
 -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
-    build_rustls_client_config_with_env(&ProcessEnv)
+    cached_tls::rustls_config()
 }
 
 /// Builds a reqwest client for spawned subprocess tests that exercise CA behavior.
@@ -222,6 +244,7 @@ pub fn build_reqwest_client_for_subprocess_tests(
     build_reqwest_client_with_env(&ProcessEnv, builder.no_proxy())
 }
 
+#[cfg(test)]
 fn maybe_build_rustls_client_config_with_env(
     env_source: &dyn EnvSource,
 ) -> Result<Option<Arc<ClientConfig>>, BuildCustomCaTransportError> {
@@ -230,13 +253,6 @@ fn maybe_build_rustls_client_config_with_env(
     };
 
     build_rustls_client_config(Some(&bundle)).map(Some)
-}
-
-fn build_rustls_client_config_with_env(
-    env_source: &dyn EnvSource,
-) -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
-    let bundle = env_source.configured_ca_bundle();
-    build_rustls_client_config(bundle.as_ref())
 }
 
 fn build_rustls_client_config(

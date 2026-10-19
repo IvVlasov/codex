@@ -14,6 +14,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::custom_ca::BuildCustomCaTransportError;
+use crate::custom_ca::build_reqwest_client_with_cached_ca;
 use crate::custom_ca::build_reqwest_client_with_custom_ca;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use sha2::Digest;
@@ -171,6 +172,26 @@ impl HttpClientFactory {
             route_class,
             self.outbound_proxy_policy,
         )
+    }
+
+    /// Builds a route-specific client with default TLS and a process-cached trust store.
+    ///
+    /// Builder TLS options are replaced; use `build_reqwest_client` for custom TLS policies.
+    pub fn build_reqwest_client_with_cached_ca(
+        &self,
+        builder: reqwest::ClientBuilder,
+        request_url: &str,
+        route_class: ClientRouteClass,
+    ) -> Result<reqwest::Client, BuildRouteAwareHttpClientError> {
+        let builder = configure_proxy_for_route(
+            &ProcessEnv,
+            builder,
+            request_url,
+            route_class,
+            self.outbound_proxy_policy,
+            resolve_system_proxy,
+        )?;
+        build_reqwest_client_with_cached_ca(builder).map_err(Into::into)
     }
 }
 

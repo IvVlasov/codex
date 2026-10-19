@@ -17,6 +17,7 @@ pub use crate::custom_ca::BuildCustomCaTransportError;
 /// [`build_reqwest_client_with_custom_ca`] instead.
 #[doc(hidden)]
 pub use crate::custom_ca::build_reqwest_client_for_subprocess_tests;
+pub use crate::custom_ca::build_reqwest_client_with_cached_ca;
 pub use crate::custom_ca::build_reqwest_client_with_custom_ca;
 pub use crate::custom_ca::build_rustls_client_config_with_custom_ca;
 pub use crate::custom_ca::maybe_build_rustls_client_config_with_custom_ca;
